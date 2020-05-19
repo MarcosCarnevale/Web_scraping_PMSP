@@ -1,0 +1,10 @@
+python 3.8.1
+
+
+import lxml.html as parser
+import requests <--------------------------------- pip install requests
+from urllib.parse import urlsplit, urljoin <------ pip install urlsplit, pip install urljoin
+import pandas as pd <----------------------------- pip install pandas
+import xlrd <------------------------------------- pip install xlrd
+import time
+from datetime import timedelta
