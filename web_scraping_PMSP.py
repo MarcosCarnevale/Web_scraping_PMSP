@@ -2,11 +2,12 @@ import lxml.html as parser
 import requests
 from urllib.parse import urlsplit, urljoin
 import pandas as pd
-import xlrd
+#import xlrd
 import time
 from datetime import timedelta
-
-
+#from sqlalchemy import create_engine
+import pyodbc
+#import numpy
 
 start_time = time.monotonic()
 print('Executando...')
@@ -48,7 +49,7 @@ for i in t_lnk:
         else:
             pass
 
-lista = lista[0:12] #Seleção de quantos meses serão trabalhados
+lista = lista[0:1] #Seleção de quantos meses serão trabalhados
 
 df = pd.DataFrame(lista, index = None)
 
@@ -75,9 +76,143 @@ for i in lista:
     
 print(etl)
 
-#Exportando dados
-etl.to_excel(r'C:\Users\USUARIO1\Desktop\Dados_Prefeitura_de_Sao_Paulo.xlsx')
+#Corrigindo Campos
+etl = etl.rename(columns={'Nome completo': 'Nome_Completo','Cargo Base':'Cargo_Base','Cargo em Comissão':'Cargo_em_Comissao',"Remuneração do Mês":'Remuneracao_do_Mes',"Demais Elementos da Remuneração":'Demais_Elementos_da_Remuneracao',"Remuneração Bruta":'Remuneracao_Bruta',"Tp. Log":'Tp_Log'})
 
+#etl.to_csv(r'C:\Users\USUARIO1\Desktop\Dados_Prefeitura_de_Sao_Paulo.csv')
+
+
+#String Nomes das colunas do DataFrame 
+columns_name = []
+
+for col in etl.columns:
+    
+    columns_name.append(col)
+
+columns_name = ', '.join(columns_name)
+
+#Tratando dados NaN 
+etl = etl.fillna(0)
+
+
+#Lista Colunas
+row = etl.columns
+"""
+Tenho que refatorar esse trecho, mas em resumo, aqui se pega a primeira linha do dataframe para identificar os tipos de dados, após
+concatena esta informação com o nome da coluna,  criando assim uma lista de columns/type para o Create table no SQL
+"""
+
+teste = etl.head(5)
+teste = teste.values
+gg = []
+for i in teste:
+    gg.append(i)
+    
+row = etl.columns
+row = list(row)
+ddd = list(teste[0])
+ddd
+tipo = []
+for i in ddd:
+    if isinstance(i,str) == True:
+        i = 'nvarchar(200)'
+    elif isinstance(i,float) == True:
+        i = 'float'
+    elif isinstance(i,int) == True:
+        i = 'int'
+    else:
+        pass
+    tipo.append(i)
+    
+
+
+test_keys = row 
+test_values = tipo
+
+res = {} 
+for key in test_keys: 
+    for value in test_values: 
+        res[key] = value 
+        test_values.remove(value) 
+        break  
+create_table = []       
+for key, value in res.items():
+    k = key
+    v = value
+    conct = k + " " +v
+    create_table.append(conct)
+
+create_table = ', '.join(create_table)
+
+# Drop da tabela no banco de dados
+"""
+Só uma medida paliativa enquanto não soluciono como faz update apenas dos dados novos
+"""
+
+query_table = "use master if exists (select * from sysobjects where name='PMSP' and xtype='U') drop table PMSP"
+
+conn = pyodbc.connect('Driver={SQL Server Native Client 11.0};'
+                      'Server=LAPTOP-RFQHJ2MP;'
+                      'Database=master;'
+                      'Trusted_Connection=yes;')
+
+cursor = conn.cursor()
+
+cursor.execute(query_table)
+               
+conn.commit()
+conn.close()
+
+# Create da tabela no banco de dados
+query_table = "use master if not exists (select * from sysobjects where name='PMSP' and xtype='U') create table PMSP ("
+
+conn = pyodbc.connect('Driver={SQL Server Native Client 11.0};'
+                      'Server=LAPTOP-RFQHJ2MP;'
+                      'Database=master;'
+                      'Trusted_Connection=yes;')
+
+cursor = conn.cursor()
+
+cursor.execute(query_table+create_table+")")
+               
+conn.commit()
+conn.close()
+
+
+# Criação da tabela no banco de dados
+query_table = "use master if not exists (select * from sysobjects where name='PMSP' and xtype='U') create table PMSP ("
+
+conn = pyodbc.connect('Driver={SQL Server Native Client 11.0};'
+                      'Server=LAPTOP-RFQHJ2MP;'
+                      'Database=master;'
+                      'Trusted_Connection=yes;')
+
+cursor = conn.cursor()
+
+cursor.execute(query_table+create_table+")")
+               
+conn.commit()
+conn.close()
+
+
+
+# Insert os dados na tabela PMSP
+conn = pyodbc.connect('Driver={SQL Server Native Client 11.0};'
+                      'Server=LAPTOP-RFQHJ2MP;'
+                      'Database=master;'
+                      'Trusted_Connection=yes;')
+
+cursor = conn.cursor()
+
+for index, row in etl.iterrows():
+    cursor.execute("insert into PMSP ("+columns_name+") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", row['Referencia'], row['Exceção'], row['Nome_Completo'], row['Cargo_Base'],row['Cargo_em_Comissao'], row['Remuneracao_do_Mes'], row['Demais_Elementos_da_Remuneracao'], row['Remuneracao_Bruta'], row['Unidade'],row['Tp_Log'], row['Logadrouro'], row['Número'], row['Complemento'], row['Jornada'])
+    conn.commit()
+
+cursor.close()
+conn.close()
+
+
+# Timer de execução
 end_time = time.monotonic()
 print(timedelta(seconds=end_time - start_time))
 
